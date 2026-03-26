@@ -1,0 +1,281 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "ai.lattiq/x402-trading-signals",
+  "title": "x402 Trading Signals",
+  "version": "0.1.0",
+  "description": "Regime-aware trading signals, walk-forward backtesting, and Monte Carlo simulation for ES1/NQ futures. Powered by a 5-state Hidden Markov Model and 15+ quantitative strategies. Pay per-request via x402 USDC micropayments on Base network.",
+  "websiteUrl": "https://api.lattiq.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PoopsDavis/trading-backtest.git"
+  },
+  "contactEmail": "api@lattiq.ai",
+  "license": "UNLICENSED",
+  "categories": ["finance", "trading", "ai-agents", "backtesting"],
+  "tags": ["x402", "micropayments", "futures", "regime-detection", "hmm", "monte-carlo", "usdc", "base"],
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "tools": [
+    {
+      "name": "get_regime",
+      "description": "Get the current HMM 5-state regime classification for a futures ticker (ES1 or NQ). Returns the regime label, confidence score, and distribution over the last 60 bars.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "enum": ["ES1", "NQ"],
+            "default": "ES1",
+            "description": "Futures ticker symbol"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ticker": { "type": "string" },
+          "regime": { "type": "string", "description": "One of: bull_run, bullish, neutral, choppy, bearish" },
+          "regime_id": { "type": "integer", "minimum": 0, "maximum": 4 },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "regime_distribution": { "type": "object" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "n_regimes": { "type": "integer" }
+        }
+      },
+      "annotations": {
+        "x402_price": "$0.01",
+        "x402_method": "GET",
+        "x402_path": "/regime"
+      }
+    },
+    {
+      "name": "get_signal",
+      "description": "Get the latest trading signal from a strategy for a futures ticker. Returns whether the strategy is long, neutral, or signaling exit, with which entry/exit conditions are met.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "enum": ["ES1", "NQ"],
+            "default": "ES1",
+            "description": "Futures ticker symbol"
+          },
+          "strategy": {
+            "type": "string",
+            "default": "squeeze_momentum_v1",
+            "description": "Strategy name (e.g., squeeze_momentum_v1, mean_reversion_v1)"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ticker": { "type": "string" },
+          "strategy": { "type": "string" },
+          "signal": { "type": "string", "enum": ["long", "exit", "neutral"] },
+          "conditions_met": { "type": "object" },
+          "regime": { "type": "string" },
+          "regime_confidence": { "type": "number" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "annotations": {
+        "x402_price": "$0.02",
+        "x402_method": "GET",
+        "x402_path": "/signal"
+      }
+    },
+    {
+      "name": "run_backtest",
+      "description": "Run a full walk-forward backtest with per-fold HMM retraining, parameter optimization on training data only, and Monte Carlo validation. Returns metrics, fold results, and Monte Carlo simulation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "enum": ["ES1", "NQ"],
+            "default": "ES1"
+          },
+          "strategy": {
+            "type": "string",
+            "default": "squeeze_momentum_v1"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Optional start date (YYYY-MM-DD)"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Optional end date (YYYY-MM-DD)"
+          },
+          "n_regimes": {
+            "type": "integer",
+            "default": 5,
+            "minimum": 2,
+            "maximum": 10
+          },
+          "train_months": {
+            "type": "integer",
+            "default": 12,
+            "minimum": 3,
+            "maximum": 60
+          },
+          "test_months": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 24
+          }
+        }
+      },
+      "annotations": {
+        "x402_price": "$0.10",
+        "x402_method": "POST",
+        "x402_path": "/backtest"
+      }
+    },
+    {
+      "name": "run_monte_carlo",
+      "description": "Run Monte Carlo simulation on a strategy's walk-forward returns. Shuffles daily returns N times to test whether equity curve shape is due to genuine edge or lucky ordering.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "enum": ["ES1", "NQ"],
+            "default": "ES1"
+          },
+          "strategy": {
+            "type": "string",
+            "default": "squeeze_momentum_v1"
+          },
+          "n_simulations": {
+            "type": "integer",
+            "default": 200,
+            "minimum": 10,
+            "maximum": 1000
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      },
+      "annotations": {
+        "x402_price": "$0.05",
+        "x402_method": "POST",
+        "x402_path": "/monte-carlo"
+      }
+    },
+    {
+      "name": "get_correlation",
+      "description": "Get ES1/NQ correlation and regime divergence signals. Compares HMM regime states, computes 30-day and 90-day rolling return correlations, and flags regime divergences.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "es_regime": { "type": "string" },
+          "nq_regime": { "type": "string" },
+          "es_confidence": { "type": "number" },
+          "nq_confidence": { "type": "number" },
+          "regime_agreement": { "type": "boolean" },
+          "correlation_30d": { "type": "number" },
+          "correlation_90d": { "type": "number" },
+          "divergence_signal": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "annotations": {
+        "x402_price": "$0.02",
+        "x402_method": "GET",
+        "x402_path": "/correlation"
+      }
+    },
+    {
+      "name": "get_market_brief",
+      "description": "Get a data-driven daily market analysis. Synthesizes regime state, price action, key levels, and momentum into a concise brief. Purely data-driven, no external AI used.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "summary": { "type": "string" },
+          "es_regime": { "type": "string" },
+          "nq_regime": { "type": "string" },
+          "key_levels": { "type": "object" },
+          "outlook": { "type": "string", "enum": ["bullish", "bearish", "neutral"] }
+        }
+      },
+      "annotations": {
+        "x402_price": "$0.05",
+        "x402_method": "GET",
+        "x402_path": "/market-brief"
+      }
+    },
+    {
+      "name": "health_check",
+      "description": "Free health check. Returns API status, version, loaded tickers, and available strategies.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "x402_price": "free",
+        "x402_method": "GET",
+        "x402_path": "/health"
+      }
+    },
+    {
+      "name": "get_metrics",
+      "description": "Free API usage metrics. Returns uptime, total request count, and breakdowns by endpoint and status code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "uptime_seconds": { "type": "number" },
+          "total_requests": { "type": "integer" },
+          "requests_by_endpoint": { "type": "object" },
+          "requests_by_status": { "type": "object" }
+        }
+      },
+      "annotations": {
+        "x402_price": "free",
+        "x402_method": "GET",
+        "x402_path": "/metrics"
+      }
+    }
+  ],
+  "x402": {
+    "payment": {
+      "network": "base",
+      "currency": "USDC",
+      "wallet": "0x1624FCE53E0419C32eB3b62B139AcC8bb8fCDE4C",
+      "facilitator": "https://x402.org/facilitator"
+    },
+    "bazaar": {
+      "discoverable": true,
+      "categories": ["finance", "trading-signals", "backtesting", "futures"],
+      "supported_tickers": ["ES1", "NQ"],
+      "model": "HMM-5-state",
+      "strategies_count": 15
+    }
+  }
+}
